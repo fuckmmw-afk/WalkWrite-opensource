@@ -90,8 +90,12 @@ final class RecorderViewModel: ObservableObject {
         // if it hasn't been done yet for this app session.
         Task.detached(priority: .background) {
             Foundation.NSLog("RecorderViewModel: Pre-warming WhisperEngine...")
-            _ = await WhisperEngine.shared // Access to initialize
-            Foundation.NSLog("RecorderViewModel: WhisperEngine pre-warming initiated/completed.")
+            do {
+                try await ModelManager.shared.prepareWhisper()
+                Foundation.NSLog("RecorderViewModel: WhisperEngine ready.")
+            } catch {
+                Foundation.NSLog("RecorderViewModel: Whisper pre-warm skipped: \(error)")
+            }
         }
     }
 
@@ -198,7 +202,7 @@ final class RecorderViewModel: ObservableObject {
             var words: [WordStamp] = []
 
             do {
-                // Assign to temporary local constants first
+                try await ModelManager.shared.prepareWhisper()
                 let (localTranscript, localWords) = try await WhisperEngine.shared.transcribe(audioFileURL: audioURL) { progress in
                     Task { @MainActor in
                         // This closure only captures `self`

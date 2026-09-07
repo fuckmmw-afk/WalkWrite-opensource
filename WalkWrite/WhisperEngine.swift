@@ -27,18 +27,11 @@ public enum WhisperError: Error { // Made public
 public final class WhisperEngine { // Made public
 
     // MARK: – Singleton
-    public static let shared: WhisperEngine = { // Made public
-        do {
-            // Ensure this model name matches your actual model file in the bundle
-            let modelURL = Bundle.main.url(forResource: "ggml-large-v3-turbo-q5_0", withExtension: "bin")!
-            return try WhisperEngine(modelURL: modelURL)
-        } catch {
-            fatalError("Failed to load Whisper model: \(error)")
-        }
-    }()
+    public static let shared = WhisperEngine()
 
     // MARK: – Private Properties
-    private let modelURL: URL
+    private var modelURL: URL?
+    private var useTurboDTW = false
     private let whisperLanguage: NSString = "ru"
 #if canImport(whisper)
     private var ctx: OpaquePointer?
@@ -59,10 +52,21 @@ public final class WhisperEngine { // Made public
 
 
     // MARK: – Lifecycle
-    private init(modelURL: URL) throws {
-        self.modelURL = modelURL
-        try setupContext()
+    private init() {
         registerAppLifecycleNotifications()
+    }
+
+    public func ensureLoaded(from url: URL, turboDTW: Bool) throws {
+        if ctx != nil, modelURL == url { return }
+        performReleaseActionsInternal()
+        modelURL = url
+        useTurboDTW = turboDTW
+        try setupContext()
+    }
+
+    public func unloadModel() {
+        performReleaseActionsInternal()
+        modelURL = nil
     }
 
     deinit {
@@ -359,13 +363,20 @@ public final class WhisperEngine { // Made public
             Foundation.NSLog("WhisperEngine: Context already exists.")
             return
         }
+        guard let modelURL else {
+            throw WhisperError.modelLoadFailed
+        }
         Foundation.NSLog("WhisperEngine: Setting up new context from URL: \(modelURL.path)")
         var cparams = whisper_context_default_params()
         cparams.use_gpu = true
-        cparams.dtw_token_timestamps = true
-        cparams.dtw_aheads_preset = WHISPER_AHEADS_LARGE_V3_TURBO
-        
-        let modelPath = self.modelURL.path.cString(using: .utf8)
+        if useTurboDTW {
+            cparams.dtw_token_timestamps = true
+            cparams.dtw_aheads_preset = WHISPER_AHEADS_LARGE_V3_TURBO
+        } else {
+            cparams.dtw_token_timestamps = false
+        }
+
+        let modelPath = modelURL.path.cString(using: .utf8)
         guard let cModelPath = modelPath else {
             Foundation.NSLog("WhisperEngine: Failed to convert modelURL path to CString.")
             self.ctx = nil

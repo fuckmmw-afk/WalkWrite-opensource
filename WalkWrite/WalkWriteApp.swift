@@ -20,6 +20,7 @@ struct WalkWriteApp: App {
         // Perform initial purchase manager setup (optional, but good practice)
         // This ensures the shared instance is created early.
         _ = PurchaseManager.shared
+        _ = ModelManager.shared
     }
 
     var body: some Scene {

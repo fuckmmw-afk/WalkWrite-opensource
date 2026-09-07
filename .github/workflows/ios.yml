@@ -10,12 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
-
-      - name: Git LFS
-        run: |
-          git lfs install
-          git lfs pull
+          lfs: false
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1

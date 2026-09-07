@@ -115,12 +115,13 @@ public final class LLMEngine { // Made public
         // Uncomment to hard-cap total GPU allocations (requires Increased Memory Limit entitlement).
         // MLX.GPU.set(memoryLimit: 1600 * 1024 * 1024)
 
-        // Try blue-folder reference first; if that fails, fall back to bundle root
+        let downloaded = await MainActor.run { ModelManager.shared.llmDirectory() }
         let modelDir: URL
-        if let dir = Bundle.main.url(forResource: "QwenModel", withExtension: nil) {
+        if FileManager.default.fileExists(atPath: downloaded.appendingPathComponent("config.json").path) {
+            modelDir = downloaded
+        } else if let dir = Bundle.main.url(forResource: "QwenModel", withExtension: nil) {
             modelDir = dir
         } else if let cfg = Bundle.main.url(forResource: "config", withExtension: "json") {
-            // When individual files are copied, config.json will be at bundle root.
             modelDir = cfg.deletingLastPathComponent()
         } else {
             throw LLMError.modelNotFound

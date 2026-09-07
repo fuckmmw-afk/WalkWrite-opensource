@@ -5,6 +5,8 @@ struct NotesListView: View {
     @Environment(NoteStore.self) private var store
     @State private var showRecorder = false
     @State private var showInfo = false
+    @State private var showModels = false
+    @ObservedObject private var models = ModelManager.shared
 
     // Search
     @State private var searchText: String = ""
@@ -61,12 +63,12 @@ struct NotesListView: View {
             .navigationTitle("Дикта")
             .safeAreaInset(edge: .bottom) {
                 RecordButton(isRecording: false) {
-                    // Check if WhisperStateManager indicates readiness
-                    if WhisperStateManager.shared.canAcceptNewJob() {
+                    if !models.asrReady {
+                        showModels = true
+                    } else if WhisperStateManager.shared.canAcceptNewJob() {
                         showRecorder = true
                     } else {
-                        // Optional: Add user feedback here (e.g., alert)
-                        Foundation.NSLog("NotesListView: Record button tapped, but WhisperStateManager indicates busy (transcribing or releasing).")
+                        Foundation.NSLog("NotesListView: Whisper busy.")
                     }
                 }
                 .padding(.bottom, 40)
@@ -77,6 +79,13 @@ struct NotesListView: View {
                 }
             }
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        showModels = true
+                    } label: {
+                        Image(systemName: "externaldrive.badge.icloud")
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         showInfo = true
@@ -84,6 +93,12 @@ struct NotesListView: View {
                         Image(systemName: "info.circle")
                     }
                 }
+            }
+            .fullScreenCover(isPresented: Binding(
+                get: { showModels || !models.asrReady },
+                set: { if !$0 { showModels = false } }
+            )) {
+                ModelSetupView(canDismiss: models.asrReady)
             }
             .searchable(text: $searchText, placement: .automatic, prompt: "Поиск")
             .sheet(isPresented: $showInfo) {

@@ -65,6 +65,9 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				"ggml-large-v3-turbo-q5_0.bin",
+				"ggml-large-v3-turbo-encoder.mlmodelc",
+				QwenModel,
 			);
 			target = 38D50FFF2DCACD1400933F27 /* WalkWrite */;
 		};

@@ -9,6 +9,7 @@ import Foundation // Added for PurchaseManager dependencies
 struct InfoSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var brain = BrainSettings.shared
+    @State private var showModels = false
 
     private let accent = Color.accentColor
 
@@ -29,6 +30,12 @@ struct InfoSheet: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+                }
+
+                Button {
+                    showModels = true
+                } label: {
+                    Label("Модели Hugging Face / ASR", systemImage: "externaldrive.badge.icloud")
                 }
 
                 Picker("Мозг", selection: $brain.mode) {
@@ -118,6 +125,9 @@ struct InfoSheet: View {
             .task { await PurchaseManager.shared.loadProduct() }
             .navigationTitle("About")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close", action: { dismiss() }) } }
+            .sheet(isPresented: $showModels) {
+                ModelSetupView(canDismiss: true)
+            }
         }
     }
 }
