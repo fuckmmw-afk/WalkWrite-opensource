@@ -4,12 +4,14 @@ enum ModelError: Error, LocalizedError {
     case http(Int)
     case incomplete
     case missing
+    case notGGML
 
     var errorDescription: String? {
         switch self {
         case .http(let code): return "Hugging Face HTTP \(code)"
         case .incomplete: return "Файл скачался не полностью"
         case .missing: return "Модель ещё не скачана"
+        case .notGGML: return "Скачался не ggml (HTML/ошибка Hugging Face). Повторите загрузку."
         }
     }
 }
@@ -52,7 +54,8 @@ final class ModelManager: ObservableObject {
     }
 
     func isDownloaded(asr spec: ASRModelSpec) -> Bool {
-        fileOK(asrFileURL(spec), expected: spec.file.bytes)
+        let url = asrFileURL(spec)
+        return fileOK(url, expected: spec.file.bytes) && Self.isGGML(url)
     }
 
     func isDownloaded(llm spec: LLMModelSpec) -> Bool {
@@ -123,7 +126,8 @@ final class ModelManager: ObservableObject {
         }
         try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
         var request = URLRequest(url: file.url)
-        request.setValue("dicta/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("huggingface-hub/0.25.0; dicta/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 600
 
         let span = total ?? file.bytes
@@ -146,7 +150,21 @@ final class ModelManager: ObservableObject {
         }
         try? fm.removeItem(at: dest)
         try fm.moveItem(at: tmp, to: dest)
+        if file.path.hasSuffix(".bin"), !Self.isGGML(dest) {
+            try? fm.removeItem(at: dest)
+            throw ModelError.notGGML
+        }
         progress[key] = total == nil ? 1 : Double(base + size) / Double(max(span, 1))
+    }
+
+    static func isGGML(_ url: URL) -> Bool {
+        guard let fh = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? fh.close() }
+        let data = fh.readData(ofLength: 4)
+        guard data.count == 4 else { return false }
+        let s = String(bytes: data, encoding: .ascii) ?? ""
+        if s.hasPrefix("<") || s.hasPrefix("{") { return false }
+        return true
     }
 }
 

@@ -6,7 +6,7 @@ struct RemoteFile: Hashable, Sendable {
     let bytes: Int64
 
     var url: URL {
-        URL(string: "https://huggingface.co/\(repo)/resolve/main/\(path)?download=true")!
+        URL(string: "https://huggingface.co/\(repo)/resolve/main/\(path)")!
     }
 }
 

@@ -39,6 +39,13 @@ struct RecorderSheet: View {
                     Text("Нажмите, чтобы записать")
                 }
             }
+            if let err = vm.lastASRError {
+                Text(err)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
 
             if !vm.isPreparingModel {
                 Text(vm.elapsed.mmSS)

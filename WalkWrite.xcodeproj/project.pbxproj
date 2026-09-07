@@ -65,6 +65,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				"WalkWrite-Bridging-Header.h",
 				"ggml-large-v3-turbo-q5_0.bin",
 				"ggml-large-v3-turbo-encoder.mlmodelc",
 				QwenModel,
@@ -471,6 +472,10 @@
 				DEVELOPMENT_TEAM = BDV2K75RT5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/whisper-headers",
+				);
 				INFOPLIST_FILE = WalkWrite/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Дикта";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -486,10 +491,23 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lc++",
+					"-framework",
+					Accelerate,
+					"-framework",
+					Metal,
+					"-framework",
+					MetalKit,
+					"-framework",
+					CoreML,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.motivationstack.walkwrite;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "WalkWrite/WalkWrite-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -506,6 +524,10 @@
 				DEVELOPMENT_TEAM = BDV2K75RT5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/whisper-headers",
+				);
 				INFOPLIST_FILE = WalkWrite/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Дикта";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -521,10 +543,23 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lc++",
+					"-framework",
+					Accelerate,
+					"-framework",
+					Metal,
+					"-framework",
+					MetalKit,
+					"-framework",
+					CoreML,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.motivationstack.walkwrite;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "WalkWrite/WalkWrite-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};

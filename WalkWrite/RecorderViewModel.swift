@@ -20,7 +20,8 @@ final class RecorderViewModel: ObservableObject {
     @Published private(set) var isProcessing = false
     @Published private(set) var finishedNote: Note?
     @Published private(set) var audioLevel: Float = 0.0
-    @Published var transcriptionProgress: Double = 0.0 // New property for progress
+    @Published var transcriptionProgress: Double = 0.0
+    @Published var lastASRError: String?
 
     // MARK: - Private
     private var recorder: AVAudioRecorder?
@@ -200,6 +201,7 @@ final class RecorderViewModel: ObservableObject {
 
             var transcript = ""
             var words: [WordStamp] = []
+            var asrError: String?
 
             do {
                 try await ModelManager.shared.prepareWhisper()
@@ -213,13 +215,13 @@ final class RecorderViewModel: ObservableObject {
                 transcript = localTranscript
                 words = localWords
             } catch WhisperError.transcriptionInterrupted {
+                asrError = WhisperError.transcriptionInterrupted.localizedDescription
+                transcript = "⚠️ \(asrError!)"
                 NSLog("RecorderViewModel: Transcription was interrupted.")
-                // UI reset and user notification will be handled below
-                // transcript and words will remain empty or partially filled if desired
             } catch {
+                asrError = error.localizedDescription
+                transcript = "⚠️ \(asrError!)"
                 NSLog("RecorderViewModel: Transcription failed with error: \(error)")
-                // Handle other errors (e.g., model load, audio read)
-                // transcript and words will remain empty
             }
 
             // WhisperEngine.shared.release() is now called internally by WhisperEngine's defer block
@@ -229,10 +231,12 @@ final class RecorderViewModel: ObservableObject {
             // Capture transcript and words as immutable constants before passing to MainActor context
             let finalTranscript = transcript
             let finalWords = words
+            let finalError = asrError
 
             await MainActor.run {
                 self.isProcessing = false
-                self.isPreparingModel = false // Ensure this is also reset
+                self.isPreparingModel = false
+                self.lastASRError = finalError
 
                 if finalTranscript.isEmpty && finalWords.isEmpty {
                     // Transcription likely failed or was interrupted significantly
@@ -256,7 +260,7 @@ final class RecorderViewModel: ObservableObject {
                 // Update the note in the persistent store (replace placeholder)
                 self.store?.update(note)
 
-                if !finalTranscript.isEmpty, let store = self.store {
+                if !finalTranscript.isEmpty, finalError == nil, let store = self.store {
                     enqueueEnhancement(for: note, in: store)
                 }
             }

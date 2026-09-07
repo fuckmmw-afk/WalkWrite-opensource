@@ -1,8 +1,5 @@
 import Foundation
-import AVFoundation // Required for AVAudioFile and chunking
-#if canImport(whisper)
-import whisper   // XCFramework from whisper.cpp
-#endif
+import AVFoundation
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -14,13 +11,26 @@ public actor WhisperActor { // Made public
 }
 
 // Thin Swift wrapper around whisper.cpp for one-off transcription jobs.
-public enum WhisperError: Error { // Made public
+public enum WhisperError: Error, LocalizedError {
     case modelLoadFailed
     case audioFileReadFailed
     case audioFormatError
     case encodeFailed(status: Int32)
     case transcriptionAttemptWhileNotActive
-    case transcriptionInterrupted // For backgrounding
+    case transcriptionInterrupted
+    case emptyAudio
+
+    public var errorDescription: String? {
+        switch self {
+        case .modelLoadFailed: return "Не удалось загрузить Whisper. Скачайте ASR ещё раз."
+        case .audioFileReadFailed: return "Не удалось прочитать запись."
+        case .audioFormatError: return "Неподдерживаемый формат аудио."
+        case .encodeFailed(let s): return "whisper_full статус \(s)"
+        case .transcriptionAttemptWhileNotActive: return "Расшифровка прервана (приложение не активно)."
+        case .transcriptionInterrupted: return "Расшифровка прервана."
+        case .emptyAudio: return "Пустой файл записи."
+        }
+    }
 }
 
 @WhisperActor // Apply the actor to the class
@@ -33,9 +43,7 @@ public final class WhisperEngine { // Made public
     private var modelURL: URL?
     private var useTurboDTW = false
     private let whisperLanguage: NSString = "ru"
-#if canImport(whisper)
     private var ctx: OpaquePointer?
-#endif
     // Removed local state flags, will use WhisperStateManager
     // private var isTranscriptionInProgress = false
     // private var isReleasingContext = false
@@ -57,9 +65,7 @@ public final class WhisperEngine { // Made public
     }
 
     public func ensureLoaded(from url: URL, turboDTW: Bool) throws {
-#if canImport(whisper)
         if ctx != nil, modelURL == url { return }
-#endif
         performReleaseActionsInternal()
         modelURL = url
         useTurboDTW = turboDTW
@@ -72,9 +78,7 @@ public final class WhisperEngine { // Made public
     }
 
     deinit {
-#if canImport(whisper)
         if let c = ctx { whisper_free(c) }
-#endif
         NotificationCenter.default.removeObserver(self)
     }
 
@@ -99,47 +103,31 @@ public final class WhisperEngine { // Made public
 
         // Defer cleanup *except* for endBackgroundTask
         defer {
-            Task { // Task to hop off WhisperActor if needed for main actor update
-                await WhisperStateManager.shared.setIsTranscribing(false) // Now awaits an async func
+            Task {
+                await WhisperStateManager.shared.setIsTranscribing(false)
             }
-            release() // Release context after each job (success or failure)
-            // endBackgroundTask() cannot be awaited here, handled in do/catch/success paths
         }
 
         // Wrap the main logic in do-catch to ensure endBackgroundTask is called
         do {
-#if canImport(whisper)
             if ctx == nil {
                 Foundation.NSLog("WhisperEngine: Context is nil in transcribe(audioFileURL:). Attempting to set up context.")
                 try setupContext()
             }
             guard ctx != nil else {
-                await self.endBackgroundTask() // End task before throwing
+                await self.endBackgroundTask()
                 throw WhisperError.modelLoadFailed
             }
 
-#if canImport(UIKit)
-            let appIsActive = await MainActor.run { UIApplication.shared.applicationState == .active }
-            let isBgTaskActive = await self.isBackgroundTaskActive() // Call method on WhisperActor
-            if !appIsActive && !isBgTaskActive {
-                 Foundation.NSLog("WhisperEngine: App is not active and no background task. Aborting transcription.")
-                 await self.endBackgroundTask() // End task before throwing
-                 throw WhisperError.transcriptionAttemptWhileNotActive
-            }
-#endif
-
             let audioFile = try AVAudioFile(forReading: audioFileURL)
-            guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32,
-                                             sampleRate: Double(self.WHISPER_SAMPLE_RATE),
-                                             channels: 1,
-                                             interleaved: false) else {
-                await self.endBackgroundTask() // End task before throwing
-                throw WhisperError.audioFormatError
-            }
-
+            let fileFormat = audioFile.processingFormat
             let totalFrames = AVAudioFramePosition(audioFile.length)
+            if totalFrames <= 0 {
+                await self.endBackgroundTask()
+                throw WhisperError.emptyAudio
+            }
             let chunkDurationSeconds: TimeInterval = 30.0
-            let framesPerChunk = AVAudioFrameCount(chunkDurationSeconds * format.sampleRate)
+            let framesPerChunk = AVAudioFrameCount(chunkDurationSeconds * fileFormat.sampleRate)
             var currentPosition: AVAudioFramePosition = 0
             var allWords: [WordStamp] = []
             // var fullText = "" // This will be reconstructed from allWords at the end.
@@ -153,27 +141,21 @@ public final class WhisperEngine { // Made public
                 }
 
                 let framesToRead = min(framesPerChunk, AVAudioFrameCount(totalFrames - currentPosition))
-                guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: framesToRead) else {
-                    await self.endBackgroundTask() // End task before throwing
+                guard let buffer = AVAudioPCMBuffer(pcmFormat: fileFormat, frameCapacity: framesToRead) else {
+                    await self.endBackgroundTask()
                     throw WhisperError.audioFileReadFailed
                 }
-                
+
                 do {
                     audioFile.framePosition = currentPosition
                     try audioFile.read(into: buffer, frameCount: framesToRead)
                 } catch {
                     Foundation.NSLog("WhisperEngine: Failed to read audio chunk: \(error)")
-                    await self.endBackgroundTask() // End task before throwing
+                    await self.endBackgroundTask()
                     throw WhisperError.audioFileReadFailed
                 }
 
-                guard let floatChannelData = buffer.floatChannelData else {
-                    await self.endBackgroundTask() // End task before throwing
-                    throw WhisperError.audioFileReadFailed
-                }
-
-                let channelData = floatChannelData[0]
-                let samples: [Float] = Array(UnsafeBufferPointer(start: channelData, count: Int(buffer.frameLength)))
+                let samples = try Self.mono16k(buffer: buffer, sourceFormat: fileFormat)
 
                 let (_, chunkWords) = try await transcribe(samples: samples)
 
@@ -185,7 +167,7 @@ public final class WhisperEngine { // Made public
                 // It will be reconstructed from 'allWords' after the loop.
                 
                 currentPosition += AVAudioFramePosition(framesToRead)
-                accumulatedOffsetSeconds += Double(framesToRead) / format.sampleRate
+                accumulatedOffsetSeconds += Double(framesToRead) / fileFormat.sampleRate
                 
                 let progress = Double(currentPosition) / Double(totalFrames)
                 progressHandler(progress)
@@ -213,14 +195,9 @@ public final class WhisperEngine { // Made public
                 }
             }
             
-            Foundation.NSLog("WhisperEngine: Transcription completed successfully. Text reconstructed from WordStamps.")
-            await self.endBackgroundTask() // End task on success
+            Foundation.NSLog("WhisperEngine: Transcription completed. chars=\(newConstructedText.count) words=\(allWords.count)")
+            await self.endBackgroundTask()
             return (newConstructedText, allWords)
-#else // Fallback if whisper cannot be imported
-            Foundation.NSLog("WhisperEngine: whisper not imported. Cannot transcribe.")
-            await self.endBackgroundTask() // End task on failure
-            throw WhisperError.modelLoadFailed
-#endif
         } catch {
             await self.endBackgroundTask() // End task on any caught error
             throw error
@@ -260,7 +237,6 @@ public final class WhisperEngine { // Made public
         // This runs on WhisperActor (because 'release' calls it via 'self' from within a Task that hops to MainActor then calls back to 'self' which is on WhisperActor)
         // Or more simply, 'release' is an instance method, so 'self.perform...' is on the instance's actor.
         Foundation.NSLog("WhisperEngine: performReleaseActionsInternal on WhisperActor.")
-#if canImport(whisper)
         if let c = ctx {
             Foundation.NSLog("WhisperEngine: Calling whisper_free on WhisperActor.")
             whisper_free(c)
@@ -268,7 +244,6 @@ public final class WhisperEngine { // Made public
         } else {
             Foundation.NSLog("WhisperEngine: Context already nil on WhisperActor, no need to release.")
         }
-#endif
         Foundation.NSLog("WhisperEngine: performReleaseActions completed on WhisperActor.")
     }
     
@@ -276,7 +251,39 @@ public final class WhisperEngine { // Made public
 
     // MARK: – Private Helper Methods
 
-#if canImport(whisper)
+    private static func mono16k(buffer: AVAudioPCMBuffer, sourceFormat: AVAudioFormat) throws -> [Float] {
+        guard let channel = buffer.floatChannelData?[0] else { throw WhisperError.audioFileReadFailed }
+        let n = Int(buffer.frameLength)
+        let src = Array(UnsafeBufferPointer(start: channel, count: n))
+        let rate = sourceFormat.sampleRate
+        if abs(rate - 16000) < 1 {
+            if sourceFormat.channelCount == 1 { return src }
+        }
+        guard let outFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
+              let converter = AVAudioConverter(from: sourceFormat, to: outFormat) else {
+            throw WhisperError.audioFormatError
+        }
+        let ratio = 16000.0 / rate
+        let outFrames = AVAudioFrameCount((Double(n) * ratio).rounded(.up) + 16)
+        guard let outBuf = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: outFrames) else {
+            throw WhisperError.audioFormatError
+        }
+        var error: NSError?
+        var consumed = false
+        converter.convert(to: outBuf, error: &error) { _, status in
+            if consumed {
+                status.pointee = .endOfStream
+                return nil
+            }
+            consumed = true
+            status.pointee = .haveData
+            return buffer
+        }
+        if let error { throw error }
+        guard let outCh = outBuf.floatChannelData?[0] else { throw WhisperError.audioFileReadFailed }
+        return Array(UnsafeBufferPointer(start: outCh, count: Int(outBuf.frameLength)))
+    }
+
     /// Transcribe 16-kHz mono PCM samples and return text and word-level stamps. (Made private)
     private func transcribe(samples pcm: [Float]) async throws -> (text: String, words: [WordStamp]) {
         if ctx == nil {
@@ -287,14 +294,6 @@ public final class WhisperEngine { // Made public
             throw WhisperError.modelLoadFailed
         }
 
-#if canImport(UIKit)
-        let appIsActive = await MainActor.run { UIApplication.shared.applicationState == .active }
-        let isBgTaskActive = await self.isBackgroundTaskActive() // Call method on WhisperActor
-        if !appIsActive && !isBgTaskActive {
-             Foundation.NSLog("WhisperEngine: App is not active during private transcribe. Aborting.")
-             throw WhisperError.transcriptionAttemptWhileNotActive
-        }
-#endif
         if pauseRequested {
             Foundation.NSLog("WhisperEngine: Pause requested before whisper_full. Aborting.")
             throw WhisperError.transcriptionInterrupted
@@ -353,13 +352,7 @@ public final class WhisperEngine { // Made public
         }
         return (text.trimmingCharacters(in: .whitespacesAndNewlines), words)
     }
-#else
-    private func transcribe(samples pcm: [Float]) async throws -> (text: String, words: [WordStamp]) {
-        return ("", [])
-    }
-#endif
 
-#if canImport(whisper)
     private func setupContext() throws {
         if ctx != nil {
             Foundation.NSLog("WhisperEngine: Context already exists.")
@@ -368,9 +361,12 @@ public final class WhisperEngine { // Made public
         guard let modelURL else {
             throw WhisperError.modelLoadFailed
         }
-        Foundation.NSLog("WhisperEngine: Setting up new context from URL: \(modelURL.path)")
+        guard FileManager.default.fileExists(atPath: modelURL.path) else {
+            Foundation.NSLog("WhisperEngine: model file missing at \(modelURL.path)")
+            throw WhisperError.modelLoadFailed
+        }
+        Foundation.NSLog("WhisperEngine: Setting up context from \(modelURL.path)")
         var cparams = whisper_context_default_params()
-        cparams.use_gpu = true
         if useTurboDTW {
             cparams.dtw_token_timestamps = true
             cparams.dtw_aheads_preset = WHISPER_AHEADS_LARGE_V3_TURBO
@@ -378,26 +374,28 @@ public final class WhisperEngine { // Made public
             cparams.dtw_token_timestamps = false
         }
 
-        let modelPath = modelURL.path.cString(using: .utf8)
-        guard let cModelPath = modelPath else {
-            Foundation.NSLog("WhisperEngine: Failed to convert modelURL path to CString.")
-            self.ctx = nil
-            throw WhisperError.modelLoadFailed
+        let modelPath = modelURL.path
+        func load(gpu: Bool) -> OpaquePointer? {
+            cparams.use_gpu = gpu
+            return modelPath.withCString { ptr in
+                whisper_init_from_file_with_params(ptr, cparams)
+            }
         }
 
-        guard let newCtx = whisper_init_from_file_with_params(cModelPath, cparams) else {
-            Foundation.NSLog("WhisperEngine: whisper_init_from_file_with_params failed.")
-            self.ctx = nil
-            throw WhisperError.modelLoadFailed
+        if let gpuCtx = load(gpu: true) {
+            ctx = gpuCtx
+            Foundation.NSLog("WhisperEngine: loaded with GPU/Metal")
+            return
         }
-        self.ctx = newCtx
-        Foundation.NSLog("WhisperEngine: Context setup successful with GPU enabled.")
+        Foundation.NSLog("WhisperEngine: GPU init failed, retrying CPU")
+        if let cpuCtx = load(gpu: false) {
+            ctx = cpuCtx
+            Foundation.NSLog("WhisperEngine: loaded with CPU")
+            return
+        }
+        ctx = nil
+        throw WhisperError.modelLoadFailed
     }
-#else
-    private func setupContext() throws {
-         throw WhisperError.modelLoadFailed
-    }
-#endif
 
     // MARK: - Background Task Management (Methods on WhisperActor, hop internally)
 #if canImport(UIKit)
