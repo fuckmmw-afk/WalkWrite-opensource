@@ -1,3 +1,18 @@
+# Дикта (форк WalkWrite)
+
+Форк [WalkWrite-opensource](https://github.com/lbacaj/WalkWrite-opensource) под словарные карточки.
+
+- Запись 6–15 сек, **локальный Whisper** (large-v3-turbo Q5_0, язык `ru`). Каждая запись — новая сессия.
+- **Основной мозг:** Cloudflare Worker + Workers AI (`env.AI.run`, модель `@cf/meta/llama-3.1-8b-instruct-fp8`). Клиент шлёт `POST { raw_transcript, locale: "ru" }` на `*.workers.dev`. Ключ Cloudflare в iOS нет.
+- **Запасной мозг:** локальный Qwen-3 0.6B (MLX), если нет сети или Worker не ответил (режим «Авто»).
+- Ответ: термин, определение, 1–2 уточнения, источник если был Wikipedia-поиск на воркере.
+- UI: кнопка записи, сырой текст, карточка, история. Watch/клавиатуры нет.
+- Сборка: `.github/workflows/ios.yml` — unsigned `App.xcarchive.zip`, без подписи.
+
+Worker: `cloudflare-worker/`. Деплой: token со скоупом **Workers Scripts Edit**.
+
+---
+
 # WalkWrite - Voice Notes with On-Device AI
 
 <p align="center">

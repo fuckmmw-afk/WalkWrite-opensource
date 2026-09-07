@@ -35,6 +35,11 @@ fastlane/test_output
 # Configuration
 Config.xcconfig
 
+# Wrangler
+cloudflare-worker/node_modules/
+cloudflare-worker/.wrangler/
+cloudflare-worker/.dev.vars
+
 # macOS
 .DS_Store
 .AppleDouble

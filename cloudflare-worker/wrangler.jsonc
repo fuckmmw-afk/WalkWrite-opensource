@@ -1,0 +1,12 @@
+{
+  "name": "dicta-brain",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-07",
+  "account_id": "78100f9ab63f3d4a04b296f5b8192430",
+  "workers_dev": true,
+  "ai": { "binding": "AI" },
+  "vars": {
+    "MODEL": "@cf/meta/llama-3.1-8b-instruct-fp8",
+    "FALLBACK_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+  }
+}

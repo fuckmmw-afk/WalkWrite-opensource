@@ -123,6 +123,9 @@ final class RecorderViewModel: ObservableObject {
                     // For example, a square root curve (power of 0.5)
                     // self.audioLevel = pow(normalizedLevel, 0.5)
                     self.audioLevel = normalizedLevel
+                    if self.elapsed >= 15 {
+                        self.stopRecording()
+                    }
                 }
                 self.objectWillChange.send() // For elapsed time and other UI updates
             }
@@ -249,8 +252,9 @@ final class RecorderViewModel: ObservableObject {
                 // Update the note in the persistent store (replace placeholder)
                 self.store?.update(note)
 
-                // LLM post-processing is no longer automatically triggered here.
-                // It should be triggered manually via manuallyRunPostProcessing(for:)
+                if !finalTranscript.isEmpty, let store = self.store {
+                    enqueueEnhancement(for: note, in: store)
+                }
             }
         }
     }

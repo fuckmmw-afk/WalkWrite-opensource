@@ -20,7 +20,10 @@ struct NotesListView: View {
         if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return store.notes
         }
-        return store.notes.filter { $0.transcript.localizedCaseInsensitiveContains(searchText) }
+        return store.notes.filter {
+            $0.transcript.localizedCaseInsensitiveContains(searchText)
+            || ($0.cards?.contains { $0.term.localizedCaseInsensitiveContains(searchText) || $0.definition.localizedCaseInsensitiveContains(searchText) } ?? false)
+        }
     }
 
     var body: some View {
@@ -29,9 +32,9 @@ struct NotesListView: View {
             Group {
                 if store.notes.isEmpty {
                     ContentUnavailableView(label: {
-                        Label("No Notes Yet", systemImage: "mic")
+                        Label("Пока пусто", systemImage: "mic")
                     }, description: {
-                        Text("Tap Record to capture your first voice note.")
+                        Text("Нажмите запись — новая сессия, термин на русском.")
                     })
                 } else {
                     List {
@@ -55,7 +58,7 @@ struct NotesListView: View {
                     }
                 }
             }
-            .navigationTitle("WalkWrite: Notes")
+            .navigationTitle("Дикта")
             .safeAreaInset(edge: .bottom) {
                 RecordButton(isRecording: false) {
                     // Check if WhisperStateManager indicates readiness
@@ -82,7 +85,7 @@ struct NotesListView: View {
                     }
                 }
             }
-            .searchable(text: $searchText, placement: .automatic, prompt: "Search transcripts")
+            .searchable(text: $searchText, placement: .automatic, prompt: "Поиск")
             .sheet(isPresented: $showInfo) {
                 InfoSheet()
             }
@@ -133,9 +136,15 @@ private struct NoteRow: View {
 
     var body: some View {
         VStack(alignment: .leading) {
-            Text(note.transcript.isEmpty ? "(No transcript)" : String(note.transcript.prefix(40)))
+            Text(note.cards?.first?.term ?? (note.transcript.isEmpty ? "(нет текста)" : String(note.transcript.prefix(40))))
                 .font(.headline)
                 .lineLimit(1)
+            if let def = note.cards?.first?.definition {
+                Text(def)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
 
             HStack {
                 Text(note.createdAt.formatted(.dateTime.year().month().day().hour().minute()))

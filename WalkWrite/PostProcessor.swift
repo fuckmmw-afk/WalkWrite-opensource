@@ -113,55 +113,57 @@ public func enqueueEnhancement(for note: Note, in store: NoteStore) { // Made pu
             #endif
         }
 
-        // Run serially to minimise peak memory usage.
         do {
-            NSLog("LLM Enhancement starting cleanedTranscript for note \(note.id)")
-            let cleaned = try await LLMEngine.shared.cleanedTranscript(from: note.transcript)
+            let (modeRaw, workerString) = await MainActor.run {
+                (BrainSettings.shared.mode.rawValue, BrainSettings.shared.workerURL)
+            }
+            let mode = BrainMode(rawValue: modeRaw) ?? .auto
+            let workerURL = URL(string: workerString)
 
-            NSLog("LLM Enhancement completed cleanedTranscript for note \(note.id)")
-            if let store {
-                await MainActor.run {
-                    if var n = store[note.id] {
-                        n.cleanedTranscript = cleaned
-                        store.update(n)
-                        NSLog("LLM Enhancement updated NoteStore with cleanedTranscript for note \(note.id)")
-                    }
+            var cards: [DefinitionCard] = []
+            var brain = "local"
+
+            let tryCloud = (mode == .cloudflare) || (mode == .auto)
+            let tryLocal = (mode == .local) || (mode == .auto)
+
+            if tryCloud, let workerURL {
+                do {
+                    NSLog("Brain: Cloudflare Worker for note \(note.id)")
+                    let response = try await CloudflareBrainClient.define(
+                        rawTranscript: note.transcript,
+                        locale: "ru",
+                        workerURL: workerURL
+                    )
+                    cards = Array(response.cards.prefix(2))
+                    brain = "cloudflare"
+                } catch {
+                    NSLog("Brain: Cloudflare failed for note \(note.id): \(error)")
+                    if mode == .cloudflare { throw error }
                 }
             }
 
-            NSLog("LLM Enhancement starting summary for note \(note.id)")
-            let summary = try await LLMEngine.shared.summary(for: cleaned)
-            NSLog("LLM Enhancement completed summary for note \(note.id)")
+            if cards.isEmpty && tryLocal {
+                NSLog("Brain: local Qwen for note \(note.id)")
+                cards = try await LLMEngine.shared.definitionCards(from: note.transcript)
+                brain = "local"
+                await LLMEngine.shared.unload()
+            }
+
+            guard !cards.isEmpty else { throw LLMError.generationFailed }
 
             if let store {
                 await MainActor.run {
                     if var n = store[note.id] {
-                        n.summary = summary
+                        n.cards = cards
+                        n.brain = brain
+                        n.cleanedTranscript = cards.map { "\($0.term): \($0.definition)" }.joined(separator: "\n\n")
+                        n.summary = cards.first?.definition
+                        n.keyIdeas = cards.flatMap(\.notes)
+                        n.enhancementFailed = false
                         store.update(n)
-                        NSLog("LLM Enhancement updated NoteStore with summary for note \(note.id)")
                     }
                 }
             }
-
-            NSLog("LLM Enhancement starting keyIdeas for note \(note.id)")
-            let ideas = try await LLMEngine.shared.keyIdeas(for: cleaned)
-            NSLog("LLM Enhancement completed keyIdeas for note \(note.id)")
-
-            if let store {
-                await MainActor.run {
-                    if var n = store[note.id] {
-                        n.keyIdeas = ideas
-                        n.enhancementFailed = false // Explicitly set to false on full success
-                        store.update(n)
-                        NSLog("LLM Enhancement updated NoteStore with keyIdeas and success for note \(note.id)")
-                    }
-                }
-            }
-
-            // Free MLX buffers / weights ASAP.
-            NSLog("LLM Enhancement unloading LLMEngine for note \(note.id)")
-            await LLMEngine.shared.unload()
-            NSLog("LLM Enhancement LLMEngine unloaded for note \(note.id)")
 
         } catch {
             NSLog("LLM pipeline failed for note \(note.id): \(error)")

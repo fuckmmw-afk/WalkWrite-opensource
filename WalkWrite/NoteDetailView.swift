@@ -45,22 +45,50 @@ struct NoteDetailView: View {
 
     var body: some View {
         VStack {
-            TabView(selection: $selectedTab) {
-                transcriptTab()
-                    .tabItem { Text("Transcript") }
-                    .tag(0)
-                cleanTab()
-                    .tabItem { Text("Clean Up") }
-                    .tag(1)
-                summaryTab()
-                    .tabItem { Text("Summary") }
-                    .tag(2)
-                ideasTab()
-                    .tabItem { Text("Core Ideas") }
-                    .tag(3)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Сырой текст")
+                        .font(.headline)
+                    Text(note.transcript.isEmpty ? "—" : note.transcript)
+                        .textSelection(.enabled)
+
+                    if note.transcript.isEmpty && !isRetryingTranscription {
+                        Button(action: retryTranscription) {
+                            Label("Повторить ASR", systemImage: "arrow.clockwise.circle")
+                        }
+                        .buttonStyle(.bordered)
+                    } else if isRetryingTranscription {
+                        ProgressView("Расшифровка…")
+                    }
+
+                    Divider()
+
+                    Text("Карточка")
+                        .font(.headline)
+                    if let cards = note.cards, !cards.isEmpty {
+                        ForEach(Array(cards.enumerated()), id: \.offset) { _, card in
+                            DefinitionCardView(card: card, brain: note.brain)
+                        }
+                    } else if note.enhancementFailed == true {
+                        failedState()
+                    } else if enhancementRequested {
+                        ProgressView(note.brain == "local" ? "Локальная модель…" : "Cloudflare Workers AI…")
+                    } else if !note.transcript.isEmpty {
+                        Button(action: { startEnhancements() }) {
+                            Label("Собрать определение", systemImage: "sparkles")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+
+                    if let brain = note.brain {
+                        Text(brain == "cloudflare" ? "Мозг: Cloudflare" : "Мозг: локальный Qwen")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
             }
-            .tabViewStyle(.page(indexDisplayMode: .automatic))
-            .onChange(of: selectedTab) { _, _ in }
 
             // MARK: – Playback controls
             HStack(spacing: 32) {
@@ -68,18 +96,6 @@ struct NoteDetailView: View {
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 44))
                 }
-
-#if canImport(UIKit)
-                Button(action: prepareMail) {
-                    Image(systemName: "paperplane")
-                        .font(.system(size: 36))
-                }
-
-                Button(action: prepareMailFull) {
-                    Image(systemName: "paperplane.fill")
-                        .font(.system(size: 36))
-                }
-#endif
 
                 Spacer()
                 Text(note.duration.mmSS)
@@ -97,12 +113,12 @@ struct NoteDetailView: View {
             if let updated = store[note.id] {
                 self.note = updated
                 // Hide loader when work finishes or fails.
-                if updated.enhancementFailed != nil || (updated.cleanedTranscript != nil && updated.summary != nil && updated.keyIdeas != nil) {
+                if updated.enhancementFailed != nil || updated.cards != nil {
                     enhancementRequested = false
                 }
             }
         }
-        .navigationTitle("Note")
+        .navigationTitle(note.cards?.first?.term ?? "Запись")
 #if canImport(UIKit)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -347,6 +363,8 @@ struct NoteDetailView: View {
         n.cleanedTranscript = nil
         n.summary = nil
         n.keyIdeas = nil
+        n.cards = nil
+        n.brain = nil
         n.enhancementFailed = nil
         store.update(n)
         enhancementRequested = true
@@ -574,8 +592,8 @@ struct NoteDetailView: View {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 40))
                 .foregroundStyle(.orange)
-            Text("Generation stopped.")
-            Button("Try Again") { regenerateEnhancements() }
+            Text("Не получилось собрать карточку.")
+            Button("Ещё раз") { regenerateEnhancements() }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .padding()

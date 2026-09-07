@@ -39,6 +39,7 @@ public final class WhisperEngine { // Made public
 
     // MARK: – Private Properties
     private let modelURL: URL
+    private let whisperLanguage: NSString = "ru"
 #if canImport(whisper)
     private var ctx: OpaquePointer?
 #endif
@@ -306,7 +307,7 @@ public final class WhisperEngine { // Made public
         params.entropy_thold    = 2.8
         params.logprob_thold    = -1.0
         params.no_speech_thold  = 0.5
-        params.language         = ("en" as NSString).utf8String
+        params.language         = whisperLanguage.utf8String
         // params.translate        = false
 
         let status = pcm.withUnsafeBufferPointer { buf in

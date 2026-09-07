@@ -21,6 +21,12 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
     /// Up to ten key ideas extracted and lightly elaborated by the LLM.
     public var keyIdeas: [String]?
 
+    /// Dictionary cards from Cloudflare Workers AI or the on-device Qwen fallback.
+    public var cards: [DefinitionCard]?
+
+    /// "cloudflare" or "local"
+    public var brain: String?
+
     /// Flag persisted when the last attempt at generating the cleaned transcript
     /// / summary / key-ideas pipeline failed. `nil` means no attempt yet or the
     /// last run succeeded, `true` indicates the most recent run threw and
@@ -36,6 +42,8 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
                 cleanedTranscript: String? = nil,
                 summary: String? = nil,
                 keyIdeas: [String]? = nil,
+                cards: [DefinitionCard]? = nil,
+                brain: String? = nil,
                 enhancementFailed: Bool? = nil) {
         self.id = id
         self.createdAt = createdAt
@@ -47,6 +55,8 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         self.cleanedTranscript = cleanedTranscript
         self.summary = summary
         self.keyIdeas = keyIdeas
+        self.cards = cards
+        self.brain = brain
         self.enhancementFailed = enhancementFailed
     }
 

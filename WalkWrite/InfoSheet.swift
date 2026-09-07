@@ -8,24 +8,47 @@ import Foundation // Added for PurchaseManager dependencies
 /// for legal documents.
 struct InfoSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var brain = BrainSettings.shared
 
     private let accent = Color.accentColor
 
     var body: some View {
         NavigationStack {
+            ScrollView {
             VStack(spacing: 24) {
-                // App icon. Using fallback symbol directly.
                 Image(systemName: "mic")
                     .font(.system(size: 48))
                     .foregroundStyle(Color.accentColor)
-                    .padding(.bottom) // Add some padding like the original might have had
+                    .padding(.bottom)
 
                 VStack(spacing: 4) {
-                    Text("WalkWrite: Notes")
+                    Text("Дикта")
                         .font(.title).bold()
 
-                    Text("Transcribed Voice Notes")
+                    Text("Локальный ASR, мозг — Cloudflare Workers AI")
                         .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                Picker("Мозг", selection: $brain.mode) {
+                    ForEach(BrainMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.inline)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("URL Cloudflare Worker")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("https://dicta-brain.<subdomain>.workers.dev", text: $brain.workerURL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .textFieldStyle(.roundedBorder)
+                    Text("Ключ Cloudflare в приложении не хранится. POST { raw_transcript, locale: \"ru\" }.")
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
 
@@ -67,7 +90,7 @@ struct InfoSheet: View {
                     }
                 }
 
-                Text("Voice notes are transcribed by state-of-the-art **local** models. Your recordings never have to leave your device, keeping them private & secure.")
+                Text("Запись и Whisper остаются на телефоне. Определение по умолчанию собирает Worker на Cloudflare (`env.AI`). Без сети — локальный Qwen-3 0.6B.")
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
 
@@ -91,6 +114,7 @@ struct InfoSheet: View {
                 .padding(.bottom)
             }
             .padding()
+            }
             .task { await PurchaseManager.shared.loadProduct() }
             .navigationTitle("About")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close", action: { dismiss() }) } }

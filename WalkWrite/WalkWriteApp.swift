@@ -26,6 +26,7 @@ struct WalkWriteApp: App {
         WindowGroup {
             NotesListView()
                 .environment(store)
+                .environmentObject(BrainSettings.shared)
                 // Intentionally **no** automatic enhancement resume. Users can
                 // trigger generation from the Note detail screen to avoid
                 // background jobs that may surprise them or exceed memory.

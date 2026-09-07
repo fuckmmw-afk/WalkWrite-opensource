@@ -19,24 +19,24 @@ struct RecorderSheet: View {
         VStack(spacing: 32) {
             Group {
                 if vm.permissionDenied {
-                    Text("Microphone access denied.\nEnable it in Settings.")
+                    Text("Нет доступа к микрофону.\nВключите его в Настройках.")
                         .multilineTextAlignment(.center)
                 } else if vm.isRecording && vm.isPaused {
-                    Text("Paused")
+                    Text("Пауза")
                         .font(.title3)
                 } else if vm.isPreparingModel {
-                    Text("Local AI is trascribing")
+                    Text("Локальный ASR готовится…")
                         .multilineTextAlignment(.center)
                         .font(.title3)
                 } else if vm.isProcessing {
-                    Text("Transcribing…")
+                    Text("Расшифровка на устройстве…")
                         .multilineTextAlignment(.center)
                         .font(.title3)
-                } else if vm.isProcessing {
-                    Text("Transcribing…")
+                } else if vm.isRecording {
+                    Text("Говорите термин, 6–15 сек")
                         .font(.title3)
                 } else {
-                    Text("Ready")
+                    Text("Нажмите, чтобы записать")
                 }
             }
 
@@ -93,11 +93,7 @@ struct RecorderSheet: View {
         .interactiveDismissDisabled(vm.isRecording || vm.isPreparingModel || vm.isProcessing) // Keep this logic, pausing is still an active recording session
         .task {
             vm.attachStore(store)
-            let granted = await vm.ensurePermission()
-            if granted {
-                // No limits in open source version - always allow recording
-                vm.startRecording()
-            }
+            _ = await vm.ensurePermission()
         }
 #if canImport(UIKit)
         .sheet(isPresented: $showUpgrade) {

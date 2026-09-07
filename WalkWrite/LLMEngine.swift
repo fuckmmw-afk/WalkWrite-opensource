@@ -241,6 +241,42 @@ public final class LLMEngine { // Made public
 #endif
     }
 
+    public func definitionCards(from transcript: String) async throws -> [DefinitionCard] {
+#if canImport(MLXLLM)
+        let prompt = """
+        Ты словарный редактор. По стенограмме составь 1–2 карточки на русском.
+        Не выдумывай факты, которых нет в тексте. Ответ ТОЛЬКО JSON:
+        {"cards":[{"term":"...","definition":"...","notes":["уточнение"],"source":null}]}
+        Стенограмма:
+        \(transcript)
+        """
+        let raw = try await run(prompt: prompt, maxTokens: 512)
+        return parseCards(from: raw)
+#else
+        return [
+            DefinitionCard(
+                term: String(transcript.prefix(80)),
+                definition: transcript,
+                notes: ["локальная модель недоступна в этой сборке"],
+                source: nil
+            )
+        ]
+#endif
+    }
+
+    private func parseCards(from text: String) -> [DefinitionCard] {
+        var s = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        s = s.replacingOccurrences(of: "```json", with: "")
+        s = s.replacingOccurrences(of: "```", with: "")
+        guard let start = s.firstIndex(of: "{"), let end = s.lastIndex(of: "}") else { return [] }
+        s = String(s[start...end])
+        guard let data = s.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(BrainResponse.self, from: data) else {
+            return []
+        }
+        return Array(decoded.cards.prefix(2))
+    }
+
     public func keyIdeas(for transcript: String) async throws -> [String] { // Made public
 #if canImport(MLXLLM)
         let prompt = "Identify the key ideas from the following voice-note transcript. Return them as a bulleted list, one idea per line, at most 10 bullets. Each bullet should briefly elaborate the idea in one sentence.\n\nTranscript:\n\(transcript)\n\nKey ideas:\n-"
