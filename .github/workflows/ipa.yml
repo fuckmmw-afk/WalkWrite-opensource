@@ -6,7 +6,7 @@ on:
       archive_run_id:
         description: Actions run that uploaded App.xcarchive.zip
         required: true
-        default: "34141430212"
+        default: "34149862037"
 
 jobs:
   ipa:

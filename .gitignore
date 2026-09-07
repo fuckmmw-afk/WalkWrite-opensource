@@ -58,3 +58,11 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# Build artifacts & Whisper build source
+whisper.cpp
+whisper.cpp-src/
+libwhisper-all.a
+App.xcarchive*
+*.ipa
+Payload/

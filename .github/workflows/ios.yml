@@ -81,9 +81,28 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent App.xcarchive App.xcarchive.zip
           ls -lh App.xcarchive.zip
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload xcarchive artifact
+        uses: actions/upload-artifact@v4
         with:
           name: App.xcarchive.zip
           path: App.xcarchive.zip
           if-no-files-found: error
           retention-days: 7
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload WalkWrite-unsigned.ipa
+          mkdir -p Payload
+          cp -R App.xcarchive/Products/Applications/*.app Payload/
+          zip -qr -9 WalkWrite-unsigned.ipa Payload
+          ls -lh WalkWrite-unsigned.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WalkWrite-unsigned.ipa
+          path: WalkWrite-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7
+
