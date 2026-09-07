@@ -1,0 +1,88 @@
+name: Unsigned IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      archive_run_id:
+        description: Actions run that uploaded App.xcarchive.zip
+        required: true
+        default: "34141430212"
+
+jobs:
+  ipa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Download xcarchive artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: App.xcarchive.zip
+          run-id: ${{ inputs.archive_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Pack unsigned IPA
+        run: |
+          set -euo pipefail
+          ls -lh
+          python3 - <<'PY'
+          import os, zipfile, glob
+          from pathlib import Path
+
+          zips = list(Path('.').rglob('App.xcarchive.zip'))
+          if not zips:
+              raise SystemExit('App.xcarchive.zip not found')
+          src = zips[0]
+          print('using', src, src.stat().st_size)
+
+          with zipfile.ZipFile(src) as z:
+              app_members = [n for n in z.namelist() if '/Products/Applications/' in n and '.app/' in n]
+              if not app_members:
+                  raise SystemExit('no .app inside xcarchive')
+              # prefix like App.xcarchive/Products/Applications/WalkWrite.app/
+              marker = '/Products/Applications/'
+              sample = next(n for n in app_members if n.endswith('/') is False)
+              app_root = sample.split(marker, 1)[0] + marker + sample.split(marker, 1)[1].split('.app/')[0] + '.app/'
+              print('app_root', app_root)
+              os.makedirs('Payload', exist_ok=True)
+              for name in z.namelist():
+                  if not name.startswith(app_root):
+                      continue
+                  rel = name[len(app_root):]
+                  dest = Path('Payload') / Path(app_root.rstrip('/').split('/')[-1]) / rel
+                  if name.endswith('/'):
+                      dest.mkdir(parents=True, exist_ok=True)
+                      continue
+                  dest.parent.mkdir(parents=True, exist_ok=True)
+                  with z.open(name) as inf, open(dest, 'wb') as out:
+                      while True:
+                          chunk = inf.read(1024 * 1024)
+                          if not chunk:
+                              break
+                          out.write(chunk)
+
+          apps = glob.glob('Payload/*.app')
+          print('apps', apps)
+          if not apps:
+              raise SystemExit('Payload empty')
+
+          ipa = Path('WalkWrite-unsigned.ipa')
+          with zipfile.ZipFile(ipa, 'w', compression=zipfile.ZIP_STORED, allowZip64=True) as out:
+              for dirpath, dirnames, filenames in os.walk('Payload'):
+                  rel_dir = os.path.relpath(dirpath, '.')
+                  if rel_dir != '.':
+                      out.writestr(rel_dir.replace('\\', '/') + '/', '')
+                  for fn in filenames:
+                      full = os.path.join(dirpath, fn)
+                      arc = os.path.relpath(full, '.').replace('\\', '/')
+                      out.write(full, arc)
+          print('ipa', ipa.stat().st_size)
+          PY
+          ls -lh WalkWrite-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WalkWrite-unsigned.ipa
+          path: WalkWrite-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
