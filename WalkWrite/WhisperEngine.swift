@@ -57,7 +57,9 @@ public final class WhisperEngine { // Made public
     }
 
     public func ensureLoaded(from url: URL, turboDTW: Bool) throws {
+#if canImport(whisper)
         if ctx != nil, modelURL == url { return }
+#endif
         performReleaseActionsInternal()
         modelURL = url
         useTurboDTW = turboDTW
