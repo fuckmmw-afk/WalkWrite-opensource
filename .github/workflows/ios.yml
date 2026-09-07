@@ -47,6 +47,12 @@ jobs:
           print("discovered schemes:", schemes, file=__import__("sys").stderr)
           PY
 
+      - name: Build whisper.cpp xcframework (whisper+ggml)
+        run: |
+          brew install cmake ninja
+          chmod +x ./build-whisper-xcframework.sh
+          ./build-whisper-xcframework.sh
+
       - name: Resolve packages
         run: |
           xcodebuild -resolvePackageDependencies \
